@@ -93,19 +93,13 @@ label.f{display:block;font-size:12px;color:var(--sub);margin:10px 0 4px;font-wei
 .qty{display:flex;align-items:center;gap:4px}
 .qty button{width:30px;height:30px;border-radius:8px;background:var(--track);font-weight:800}
 .qty span{min-width:30px;text-align:center;font-weight:700}
-.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
-.cal .h{font-size:11px;color:var(--sub);padding:4px 0}
-.cal button{aspect-ratio:1;border-radius:10px;font-size:13px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:var(--track)}
-.cal button.blank{visibility:hidden}
-.cal button.today{outline:2px solid var(--accent)}
-.cal button .e{font-size:14px;line-height:1}
-.t-training{background:#dbe8fd!important} .t-cardio{background:#d9f3e2!important} .t-both{background:#fde2d0!important} .t-rest{background:#ece8f7!important}
-@media (prefers-color-scheme: dark){ .t-training{background:#1c3355!important} .t-cardio{background:#173826!important} .t-both{background:#43281a!important} .t-rest{background:#2c2743!important} }
 nav{position:fixed;bottom:0;left:0;right:0;background:var(--card);border-top:1px solid var(--border);display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:20}
 nav button{flex:1;padding:8px 0 7px;font-size:11px;color:var(--sub);display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600}
 nav button .i{font-size:20px;filter:grayscale(1);opacity:.6}
 nav button.on{color:var(--accent)}
 nav button.on .i{filter:none;opacity:1}
+nav a.navlink{flex:1;padding:8px 0 7px;font-size:11px;color:var(--sub);display:flex;flex-direction:column;align-items:center;gap:2px;font-weight:600;text-decoration:none}
+nav a.navlink .i{font-size:20px}
 #sheet{position:fixed;inset:0;background:var(--overlay);z-index:50;display:none;align-items:flex-end;justify-content:center}
 #sheet.open{display:flex}
 #sheet .panel{background:var(--bg);width:100%;max-width:560px;max-height:92vh;border-radius:20px 20px 0 0;display:flex;flex-direction:column}
@@ -144,6 +138,7 @@ const TIMINGS = [['breakfast','朝食'],['lunch','昼食'],['dinner','夕食'],[
 const TIMING_LABEL = Object.fromEntries(TIMINGS);
 const CATS = ['食材','外食','市販','サプリ'];
 const WD = ['日','月','火','水','木','金','土'];
+const COACH_URL = 'https://zh1235789-png.github.io/workout-ai-coach/';
 
 const DEFAULT_PROFILE = {
   heightCm:170, weightGoalKg:70, bfGoalPct:15,
@@ -207,21 +202,25 @@ function sumMeals(list){
   for(const m of list){ if(m.inc===false) continue; s.kcal+=m.kcal; s.p+=m.p; s.f+=m.f; s.c+=m.c; }
   return s;
 }
-function sortedWeights(){ return [...db.weights].sort((a,b)=>a.date<b.date?-1:1); }
+// 体重のある記録だけ（体脂肪率だけの日は除く）
+function sortedWeights(){ return db.weights.filter(w=>w.kg!=null).sort((a,b)=>a.date<b.date?-1:1); }
+function sortedFats(){ return db.weights.filter(w=>w.fat!=null).sort((a,b)=>a.date<b.date?-1:1); }
 function avgBetween(ws, from, to){ return avg(ws.filter(w=>w.date>=from && w.date<=to).map(w=>w.kg)); }
 
 // ===== 画面状態 =====
-const state = { tab:'today', date:todayStr(), wRange:30, calMonth:todayStr().slice(0,7), foodTab:'preset', foodCat:'すべて', trainerOpen:false };
+const state = { tab:'today', date:todayStr(), wRange:30, foodTab:'preset', foodCat:'すべて', trainerOpen:false };
 
 // ===== 描画 =====
 function render(){
   renderNav();
-  const fn = {today:renderToday, weight:renderWeight, training:renderTraining, food:renderFood, settings:renderSettings}[state.tab];
+  const fn = {today:renderToday, weight:renderWeight, food:renderFood, settings:renderSettings}[state.tab];
   fn();
 }
 function renderNav(){
-  const items=[['today','🏠','Today'],['weight','⚖️','体重'],['training','🏋️','運動'],['food','🍽️','食事'],['settings','⚙️','設定']];
-  document.getElementById('nav').innerHTML = items.map(([k,i,l])=>`<button class="${state.tab===k?'on':''}" data-a="tab" data-v="${k}"><span class="i">${i}</span>${l}</button>`).join('');
+  const items=[['today','🏠','Today'],['weight','⚖️','体重'],['food','🍽️','食事'],['settings','⚙️','設定']];
+  // 運動の記録は筋トレAIコーチ側で行う（別アプリへのリンク）
+  document.getElementById('nav').innerHTML = items.map(([k,i,l])=>`<button class="${state.tab===k?'on':''}" data-a="tab" data-v="${k}"><span class="i">${i}</span>${l}</button>`).join('')
+    + `<a href="${COACH_URL}" target="_blank" rel="noopener" class="navlink"><span class="i">🏋️</span>コーチ↗</a>`;
 }
 function setHeader(title, sub, right=''){
   document.getElementById('hdr').innerHTML = `<div><h1>${esc(title)}</h1>${sub?`<div class="sub">${esc(sub)}</div>`:''}</div>${right}`;
@@ -230,13 +229,13 @@ function setHeader(title, sub, right=''){
 // ----- Today -----
 function renderToday(){
   const date=state.date, dt=dayType(date), tg=targets(date);
-  const typeBtns = `<div class="types">${TYPE_KEYS.map(k=>`<button class="${dt===k?'on':''}" data-a="setType" data-v="${k}" title="${TYPES[k].label}" aria-label="${TYPES[k].label}">${TYPES[k].icon}</button>`).join('')}</div>`;
+  const typeBtns = `<div class="types">${TYPE_KEYS.map(k=>`<button class="${dt===k?'on':''}" data-a="setType" data-v="${k}" title="${TYPES[k].label}の日の目標" aria-label="${TYPES[k].label}の日の目標">${TYPES[k].icon}</button>`).join('')}</div>`;
   setHeader('Today', jpDate(todayStr()), typeBtns);
 
   const meals=mealsOn(date), s=sumMeals(meals);
   const remain=tg.kcal-s.kcal, pct=Math.min(100, s.kcal/tg.kcal*100);
   const isToday = date===todayStr();
-  const typeLabel = dt ? TYPES[dt].label : '未選択（トレーニング日で計算）';
+  const typeLabel = dt ? `目標：${TYPES[dt].label}の日` : '目標：未選択（トレーニング日で計算）';
 
   let html = `
   <div class="card datebar">
@@ -311,13 +310,13 @@ function trainerCard(date){
 function rest(v,u){ return v>=0? `残り${fmt(v)}${u}` : `${fmt(-v)}${u}超過`; }
 function trainerPrompt(date){
   const tg=targets(date), s=sumMeals(mealsOn(date)), p=db.profile;
-  const ws=sortedWeights(), last=ws[ws.length-1];
+  const ws=sortedWeights(), last=ws[ws.length-1], fs=sortedFats(), lf=fs[fs.length-1];
   const w7=avgBetween(ws, addDays(date,-6), date), w7p=avgBetween(ws, addDays(date,-13), addDays(date,-7));
   const night = date<todayStr() || new Date().getHours()>=21;
   const lines = mealsOn(date).map(m=>`- ${TIMING_LABEL[m.timing]||m.timing}: ${m.name}（${Math.round(m.kcal)}kcal P${r1(m.p)} F${r1(m.f)} C${r1(m.c)}）${m.inc===false?' ※集計外':''}`).join('\n') || '- （まだ記録なし）';
   return `あなたは体重管理をサポートするパーソナルトレーナーです。
 
-ユーザー情報：身長${p.heightCm}cm、現在体重${last?last.kg+'kg':'未記録'}、目標体重${p.weightGoalKg}kg、目標体脂肪率${p.bfGoalPct}%。
+ユーザー情報：身長${p.heightCm}cm、現在体重${last?last.kg+'kg':'未記録'}、目標体重${p.weightGoalKg}kg、体脂肪率${lf?lf.fat+'%（'+jpDate(lf.date)+'）':'未測定'}、目標体脂肪率${p.bfGoalPct}%。
 体重トレンド：直近7日平均${w7?w7.toFixed(1)+'kg':'—'}${w7&&w7p?`（前週比 ${sign(w7-w7p)}kg）`:''}
 
 ${jpDate(date)}のモード：${TYPES[tg.type].label}（目標 ${fmt(tg.kcal)}kcal / P${Math.round(tg.p)}g F${Math.round(tg.f)}g C${Math.round(tg.c)}g）
@@ -343,7 +342,8 @@ function renderWeight(){
   if(!state.wDate) state.wDate=t;
   const todayRec=db.weights.find(w=>w.date===state.wDate);
   let html=`<div class="card"><h2>${state.wDate===t?'今日':jpDate(state.wDate)}の体重を記録</h2>
-    <div class="row"><input type="date" id="wDate" value="${state.wDate}" max="${t}" style="flex:1.3;min-width:0"><input type="number" id="wKg" inputmode="decimal" step="0.1" placeholder="kg" value="${todayRec?todayRec.kg:''}" style="flex:1;min-width:0"><button class="btn btn-primary btn-sm" style="padding:11px 16px;white-space:nowrap;flex:none" data-a="saveWeight">記録</button></div></div>`;
+    <input type="date" id="wDate" value="${state.wDate}" max="${t}" style="margin-bottom:8px">
+    <div class="row" style="gap:6px"><input type="number" id="wKg" inputmode="decimal" step="0.1" placeholder="体重 kg" value="${todayRec&&todayRec.kg!=null?todayRec.kg:''}" style="flex:1;min-width:0"><input type="number" id="wFat" inputmode="decimal" step="0.1" placeholder="体脂肪%" value="${todayRec&&todayRec.fat!=null?todayRec.fat:''}" style="flex:1;min-width:0"><button class="btn btn-primary btn-sm" style="padding:11px 16px;white-space:nowrap;flex:none" data-a="saveWeight">記録</button></div></div>`;
   if(last){
     const diff=last.kg-goal;
     const prev7=avgBetween(ws, addDays(last.date,-7), addDays(last.date,-1));
@@ -356,14 +356,35 @@ function renderWeight(){
       <div class="stat"><div class="k">今週の変化（過去7日平均と比較）</div><div class="v ${cls(prev7==null?null:last.kg-prev7)}">${prev7==null?'—':sign(last.kg-prev7)+' kg'}</div></div>
       <div class="stat"><div class="k">先週比（7日平均）</div><div class="v ${cls(a7&&b7?a7-b7:null)}">${a7&&b7?sign(a7-b7)+' kg':'—'}</div><div class="k">先週平均 ${b7?b7.toFixed(1):'—'}</div></div>
       <div class="stat"><div class="k">先月比（30日平均）</div><div class="v ${cls(a30&&b30?a30-b30:null)}">${a30&&b30?sign(a30-b30)+' kg':'—'}</div><div class="k">先月平均 ${b30?b30.toFixed(1):'—'}</div></div>
-      <div class="stat"><div class="k">記録数</div><div class="v">${ws.length} 日</div></div>
+      ${fatStat()}
     </div>`;
   }
   html+=`<div class="card"><h2>体重グラフ</h2><div class="seg" style="margin-bottom:10px">${[7,30,90].map(n=>`<button class="${state.wRange===n?'on':''}" data-a="wRange" data-v="${n}">${n}日</button>`).join('')}</div>${weightChart(ws, state.wRange, goal)}
     <div class="sub" style="margin-top:6px"><span style="color:var(--accent)">●</span> 体重　<span style="color:var(--warn)">━</span> 7日移動平均　<span style="color:var(--ok)">┅</span> 目標 ${goal}kg</div></div>`;
-  html+=`<div class="card"><h2>週平均体重の推移</h2>${weeklyChart(ws)}</div>`;
-  html+=`<div class="card"><h2>記録履歴</h2>${ws.length?[...ws].reverse().slice(0,state.wAll?9999:30).map(w=>`<div class="hist"><span>${jpDate(w.date)}</span><span class="row"><b>${w.kg.toFixed(1)} kg</b><button class="icon-btn" data-a="editWeight" data-v="${w.date}">✏️</button><button class="icon-btn" data-a="delWeight" data-v="${w.date}">🗑️</button></span></div>`).join('')+(ws.length>30&&!state.wAll?`<button class="link" style="margin-top:10px" data-a="wAll">すべて表示（${ws.length}件）</button>`:''):'<div class="empty">まだ記録がありません</div>'}</div>`;
+  html+=`<div class="card"><h2>週平均体重の推移</h2>${weeklyChart(ws)}</div>`+fatChart();
+  const hs=[...db.weights].sort((a,b)=>a.date<b.date?1:-1);
+  html+=`<div class="card"><h2>記録履歴</h2>${hs.length?hs.slice(0,state.wAll?9999:30).map(w=>`<div class="hist"><span>${jpDate(w.date)}</span><span class="row"><b>${w.kg!=null?w.kg.toFixed(1)+' kg':'—'}</b>${w.fat!=null?`<span class="sub" style="min-width:44px;text-align:right">${w.fat.toFixed(1)}%</span>`:''}<button class="icon-btn" data-a="editWeight" data-v="${w.date}">✏️</button><button class="icon-btn" data-a="delWeight" data-v="${w.date}">🗑️</button></span></div>`).join('')+(hs.length>30&&!state.wAll?`<button class="link" style="margin-top:10px" data-a="wAll">すべて表示（${hs.length}件）</button>`:''):'<div class="empty">まだ記録がありません</div>'}</div>`;
   document.getElementById('app').innerHTML=html;
+}
+function fatStat(){
+  const fs=sortedFats(), last=fs[fs.length-1], goal=db.profile.bfGoalPct;
+  if(!last) return `<div class="stat"><div class="k">体脂肪率（目標 ${goal}%）</div><div class="v">—</div><div class="k">測ったら体重と一緒に入力</div></div>`;
+  const prev=fs.length>1?fs[fs.length-2]:null, d=prev?last.fat-prev.fat:null;
+  return `<div class="stat"><div class="k">体脂肪率（${jpDate(last.date)}）</div><div class="v">${last.fat.toFixed(1)} %</div><div class="k">目標 ${goal}% ${d!=null?`／前回比 <span class="${d<0?'down':d>0?'up':''}">${sign(d)}</span>`:''}</div></div>`;
+}
+function fatChart(){
+  const fs=sortedFats();
+  if(fs.length<2) return '';
+  const W=340,H=150,L=34,R=8,T=10,B=24, from=fs[0].date, span=Math.max(1,(pd(fs[fs.length-1].date)-pd(from))/86400000);
+  const goal=db.profile.bfGoalPct, vals=[...fs.map(f=>f.fat),goal];
+  const lo=Math.floor(Math.min(...vals)-0.5), hi=Math.ceil(Math.max(...vals)+0.5);
+  const x=d=>L+(pd(d)-pd(from))/86400000/span*(W-L-R), y=v=>T+(hi-v)/(hi-lo)*(H-T-B);
+  let g='';
+  for(let v=lo; v<=hi; v+=Math.max(1,Math.round((hi-lo)/4))) g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)"/><text x="${L-4}" y="${y(v)+4}" font-size="10" text-anchor="end" fill="var(--sub)">${v}</text>`;
+  [fs[0], fs[fs.length-1]].forEach((f,i)=>{ const dd=pd(f.date); g+=`<text x="${x(f.date)}" y="${H-6}" font-size="10" text-anchor="${i?'end':'start'}" fill="var(--sub)">${dd.getMonth()+1}/${dd.getDate()}</text>`; });
+  g+=`<line x1="${L}" x2="${W-R}" y1="${y(goal)}" y2="${y(goal)}" stroke="var(--ok)" stroke-dasharray="5 4" stroke-width="1.5"/>`;
+  g+=`<polyline fill="none" stroke="var(--p)" stroke-width="2" points="${fs.map(f=>x(f.date)+','+y(f.fat)).join(' ')}"/>`+fs.map(f=>`<circle cx="${x(f.date)}" cy="${y(f.fat)}" r="3" fill="var(--p)"/>`).join('');
+  return `<div class="card"><h2>体脂肪率の推移</h2><svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="体脂肪率グラフ">${g}</svg><div class="sub" style="margin-top:6px"><span style="color:var(--ok)">┅</span> 目標 ${goal}%</div></div>`;
 }
 function weightChart(ws, days, goal){
   const t=todayStr(), from=addDays(t,-(days-1));
@@ -400,24 +421,6 @@ function weeklyChart(ws){
   g+=`<polyline fill="none" stroke="var(--accent)" stroke-width="2.5" points="${data.map((d,i)=>x(i)+','+y(d.v)).join(' ')}"/>`;
   data.forEach((d,i)=>{ const dd=pd(d.k); g+=`<circle cx="${x(i)}" cy="${y(d.v)}" r="3.5" fill="var(--accent)"/>`; if(i%2===(data.length-1)%2) g+=`<text x="${x(i)}" y="${H-6}" font-size="10" text-anchor="middle" fill="var(--sub)">${dd.getMonth()+1}/${dd.getDate()}〜</text><text x="${x(i)}" y="${y(d.v)-8}" font-size="10" text-anchor="middle" fill="var(--text)">${d.v.toFixed(1)}</text>`; });
   return `<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="週平均体重">${g}</svg>`;
-}
-
-// ----- 運動 -----
-function renderTraining(){
-  setHeader('トレーニング記録','日付をタップして記録を追加・変更できます');
-  const [y,m]=state.calMonth.split('-').map(Number);
-  const first=new Date(y,m-1,1), days=new Date(y,m,0).getDate(), t=todayStr();
-  const cnt={training:0,cardio:0,both:0,rest:0};
-  let cells=WD.map(w=>`<div class="h">${w}</div>`).join('');
-  for(let i=0;i<first.getDay();i++) cells+='<button class="blank" disabled></button>';
-  for(let d=1; d<=days; d++){
-    const k=`${y}-${pad(m)}-${pad(d)}`, tp=db.training[k];
-    if(tp) cnt[tp]++;
-    cells+=`<button class="${tp?'t-'+tp:''} ${k===t?'today':''}" data-a="pickDay" data-v="${k}"><span>${d}</span><span class="e">${tp?TYPES[tp].icon:''}</span></button>`;
-  }
-  let html=`<div class="card"><div class="datebar" style="margin-bottom:10px"><button data-a="calMove" data-v="-1">‹</button><b>${y}年${m}月</b><button data-a="calMove" data-v="1">›</button></div><div class="cal">${cells}</div></div>
-  <div class="card"><h2>${m}月の集計</h2><div class="grid4">${TYPE_KEYS.map(k=>`<div class="stat t-${k}" style="text-align:center"><div class="k">${TYPES[k].icon} ${TYPES[k].short}</div><div class="v">${cnt[k]}</div></div>`).join('')}</div></div>`;
-  document.getElementById('app').innerHTML=html;
 }
 
 // ----- 食事（プリセット・セット管理） -----
@@ -464,9 +467,9 @@ function renderSettings(){
   <div class="card"><h2>バックアップ</h2>
     ${stale?`<div class="alert">${lastBk?'最後のバックアップから14日以上経っています。':'まだバックアップしていません。'}データはこの端末のブラウザにだけ保存されています。</div>`:`<div class="sub" style="margin-bottom:8px">最終バックアップ：${new Date(lastBk).toLocaleString('ja-JP')}</div>`}
     <button class="btn btn-secondary" data-a="exportData">バックアップを書き出す（JSON）</button>
-    <label class="btn btn-secondary" style="margin-top:8px">バックアップ / Manusデータを読み込む<input type="file" accept="application/json,.json" id="importFile" hidden></label>
-    <div class="sub" style="margin-top:8px">Manus版から書き出したJSONもここで読み込めます。読み込むと今のデータは置き換わります。</div></div>
-  <div class="card"><h2>データ</h2><div class="sub">食事 ${db.meals.length}件 / 体重 ${db.weights.length}件 / 運動 ${Object.keys(db.training).length}件 / プリセット ${db.presets.length}件 / セット ${db.sets.length}件</div>
+    <label class="btn btn-secondary" style="margin-top:8px">バックアップ / Manus・コーチのデータを読み込む<input type="file" accept="application/json,.json" id="importFile" hidden></label>
+    <div class="sub" style="margin-top:8px">Manus版の書き出しJSONと、このアプリのバックアップは<b>置き換え</b>で読み込みます。筋トレAIコーチのバックアップを選ぶと、体重・体脂肪率だけを<b>追加</b>します。</div></div>
+  <div class="card"><h2>データ</h2><div class="sub">食事 ${db.meals.length}件 / 体重 ${db.weights.length}件 / プリセット ${db.presets.length}件 / セット ${db.sets.length}件</div>
     <button class="btn btn-danger" style="margin-top:10px" data-a="resetAll">すべてのデータを消去</button></div>`;
   document.getElementById('app').innerHTML=html;
 }
@@ -648,15 +651,6 @@ function openSetEdit(id){
     return h;
   });
 }
-function openDayPicker(date){
-  openSheet(jpDate(date)+' の運動記録', ()=>{
-    const cur=db.training[date];
-    return `<div class="grid2">${TYPE_KEYS.map(k=>`<button class="btn ${cur===k?'btn-primary':'btn-secondary'}" data-a="saveDay" data-d="${date}" data-v="${k}">${TYPES[k].icon} ${TYPES[k].short}</button>`).join('')}</div>
-      ${cur?`<button class="btn btn-danger" style="margin-top:12px" data-a="saveDay" data-d="${date}" data-v="">記録を削除する</button>`:''}
-      <button class="btn btn-secondary" style="margin-top:8px" data-a="openDayInToday" data-d="${date}">この日の食事を見る</button>`;
-  });
-}
-
 // ===== クリップボード =====
 async function copyText(text){
   if(navigator.clipboard && window.isSecureContext){ try{ await navigator.clipboard.writeText(text); return true; }catch(e){} }
@@ -688,14 +682,32 @@ function fromManus(o){
 function importJson(text){
   const o=JSON.parse(text);
   let next;
+  if(o.app==='workout-ai-coach') return importCoachBody(o);
   if(o.app==='healthtracker') next=o.data;
   else if(o.profile && ('calorieTraining' in o.profile || o.mealSets)) next=fromManus(o);
   else throw new Error('このアプリのバックアップでもManusの書き出しでもありません');
-  const n=`食事 ${next.meals.length}件 / 体重 ${next.weights.length}件 / 運動 ${Object.keys(next.training).length}件 / プリセット ${next.presets.length}件 / セット ${next.sets.length}件`;
+  const n=`食事 ${next.meals.length}件 / 体重 ${next.weights.length}件 / 目標モード ${Object.keys(next.training).length}日 / プリセット ${next.presets.length}件 / セット ${next.sets.length}件`;
   if(!confirm(`${n}\n\nを読み込みます。今のデータは置き換わります。よろしいですか？`)) return;
   localStorage.setItem(KEY, JSON.stringify(next));
   db=load(); save();
   toast('読み込みました'); render();
+}
+// 筋トレAIコーチのバックアップから体組成（体重・体脂肪率）だけを取り込む。既存の体重は上書きしない
+function importCoachBody(o){
+  let logs=[];
+  try{ logs=JSON.parse(o.data&&o.data.wac_body||'[]'); }catch(e){}
+  if(!logs.length) throw new Error('このバックアップには体組成の記録がありません');
+  let addW=0, addF=0;
+  for(const b of logs){
+    if(!b.date) continue;
+    const kg=b.weight!=null&&b.weight!==''?num(b.weight,null):null, fat=b.fat!=null&&b.fat!==''?num(b.fat,null):null;
+    let ex=db.weights.find(w=>w.date===b.date);
+    if(!ex){ if(kg==null&&fat==null) continue; db.weights.push({date:b.date,kg,fat}); if(kg!=null) addW++; if(fat!=null) addF++; continue; }
+    if(ex.kg==null&&kg!=null){ ex.kg=kg; addW++; }
+    if(ex.fat==null&&fat!=null){ ex.fat=fat; addF++; }
+  }
+  if(!confirm(`筋トレAIコーチの体組成 ${logs.length}件から、体重 ${addW}件・体脂肪率 ${addF}件を追加します。\n（すでに記録がある日の体重は上書きしません）`)){ db=load(); return; }
+  save(); toast('体組成を取り込みました'); render();
 }
 function exportData(){
   db.meta.lastBackup=new Date().toISOString(); save();
@@ -725,16 +737,21 @@ document.addEventListener('click', async e=>{
     case 'copyTrainer': toast(await copyText(trainerPrompt(state.date))?'コピーしました。Claudeに貼り付けて送信してください':'コピーできませんでした'); break;
     case 'saveTrainer': { let t=document.getElementById('trainerReply').value.trim().replace(/^```\w*\n?|```$/g,'').trim(); if(!t){ toast('回答を貼り付けてください'); break; } db.comments[state.date]={text:t, at:new Date().toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}; save(); state.trainerOpen=false; render(); break; }
     // 体重
-    case 'saveWeight': { const d=document.getElementById('wDate').value||todayStr(), kg=num(document.getElementById('wKg').value,NaN); if(!(kg>20&&kg<300)){ toast('正しい体重を入力してください'); break; } const ex=db.weights.find(w=>w.date===d); if(ex) ex.kg=r1(kg); else db.weights.push({date:d,kg:r1(kg)}); save(); state.wDate=todayStr(); render(); toast(ex?'体重を更新しました':'体重を記録しました'); break; }
+    case 'saveWeight': {
+      const d=document.getElementById('wDate').value||todayStr();
+      const kgRaw=document.getElementById('wKg').value.trim(), fatRaw=document.getElementById('wFat').value.trim();
+      const kg=kgRaw?num(kgRaw,NaN):null, fat=fatRaw?num(fatRaw,NaN):null;
+      if(kg==null&&fat==null){ toast('体重か体脂肪率を入力してください'); break; }
+      if(kg!=null&&!(kg>20&&kg<300)){ toast('正しい体重を入力してください'); break; }
+      if(fat!=null&&!(fat>2&&fat<60)){ toast('正しい体脂肪率を入力してください'); break; }
+      const ex=db.weights.find(w=>w.date===d);
+      if(ex){ ex.kg=kg!=null?r1(kg):null; ex.fat=fat!=null?r1(fat):null; } else db.weights.push({date:d,kg:kg!=null?r1(kg):null,fat:fat!=null?r1(fat):null});
+      save(); state.wDate=todayStr(); render(); toast(ex?'記録を更新しました':'記録しました'); break;
+    }
     case 'editWeight': state.wDate=v; render(); window.scrollTo(0,0); document.getElementById('wKg').focus(); break;
     case 'delWeight': if(confirm(`${jpDate(v)} の記録を削除しますか？`)){ db.weights=db.weights.filter(w=>w.date!==v); save(); render(); } break;
     case 'wRange': state.wRange=+v; render(); break;
     case 'wAll': state.wAll=true; render(); break;
-    // 運動
-    case 'calMove': { const [y,m]=state.calMonth.split('-').map(Number); const d=new Date(y,m-1+(+v),1); state.calMonth=`${d.getFullYear()}-${pad(d.getMonth()+1)}`; render(); break; }
-    case 'pickDay': openDayPicker(v); break;
-    case 'saveDay': { const d=el.dataset.d; if(v) db.training[d]=v; else delete db.training[d]; save(); closeSheet(); render(); toast(v?'記録を保存しました':'記録を削除しました'); break; }
-    case 'openDayInToday': state.date=el.dataset.d; state.tab='today'; closeSheet(); render(); break;
     // 食事タブ
     case 'foodTab': state.foodTab=v; render(); break;
     case 'foodCat': state.foodCat=v; render(); break;
@@ -803,7 +820,7 @@ document.addEventListener('input', e=>{
   if(t.id==='pq' || t.id==='setQ'){ if(!e.isComposing) searchUpdate(t); return; }
   if(t.dataset.a==='pfcSum'){ const k=t.dataset.v; document.getElementById('sum_'+k).innerHTML=pfcSumText(k,num(document.getElementById('p_'+k).value),num(document.getElementById('f_'+k).value),num(document.getElementById('c_'+k).value),num(document.getElementById('k_'+k).value)); }
   if(t.dataset.est!==undefined && sheet.est){ sheet.est[+t.dataset.est][t.dataset.k]=t.value; }
-  if(t.id==='wDate'){ state.wDate=t.value; const r=db.weights.find(w=>w.date===t.value); document.getElementById('wKg').value=r?r.kg:''; }
+  if(t.id==='wDate'){ state.wDate=t.value; const r=db.weights.find(w=>w.date===t.value); document.getElementById('wKg').value=r&&r.kg!=null?r.kg:''; document.getElementById('wFat').value=r&&r.fat!=null?r.fat:''; }
 });
 // 検索欄は一覧だけ差し替える（日本語入力の変換中は待つ）
 function searchUpdate(t){
