@@ -668,9 +668,10 @@ function parseBodyRows(text){
   for(const line of (header?lines.slice(1):lines)){
     const cols=line.split(/[,\t]/).map(c=>c.trim());
     const dm=(cols[dateCol]||'').match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-    if(!dm) continue;
-    const date=`${dm[1]}-${pad(+dm[2])}-${pad(+dm[3])}`;
-    const val=i=>{ if(i<0||i>=cols.length) return null; const t=cols[i].replace(/[^\d.]/g,''); return t?num(t,null):null; };
+    // 日付がなければ今日の記録として扱う（ショートカットを短くするため）
+    const date = dm ? `${dm[1]}-${pad(+dm[2])}-${pad(+dm[3])}` : todayStr();
+    const off = dm ? 0 : -1;   // 日付列がない分だけ列をずらす
+    const val=i=>{ const j=i+off; if(j<0||j>=cols.length) return null; const t=cols[j].replace(/[^\d.]/g,''); return t?num(t,null):null; };
     let kg=val(kgCol), fat=val(fatCol);
     if(fat!=null && fat>0 && fat<1) fat=fat*100;   // ヘルスケアは 0.171 のような割合で返すことがある
     if(kg!=null && !(kg>20&&kg<300)) kg=null;
