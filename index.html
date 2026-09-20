@@ -343,7 +343,8 @@ function renderWeight(){
   const todayRec=db.weights.find(w=>w.date===state.wDate);
   let html=`<div class="card"><h2>${state.wDate===t?'今日':jpDate(state.wDate)}の体重を記録</h2>
     <input type="date" id="wDate" value="${state.wDate}" max="${t}" style="margin-bottom:8px">
-    <div class="row" style="gap:6px"><input type="number" id="wKg" inputmode="decimal" step="0.1" placeholder="体重 kg" value="${todayRec&&todayRec.kg!=null?todayRec.kg:''}" style="flex:1;min-width:0"><input type="number" id="wFat" inputmode="decimal" step="0.1" placeholder="体脂肪%" value="${todayRec&&todayRec.fat!=null?todayRec.fat:''}" style="flex:1;min-width:0"><button class="btn btn-primary btn-sm" style="padding:11px 16px;white-space:nowrap;flex:none" data-a="saveWeight">記録</button></div></div>`;
+    <div class="row" style="gap:6px"><input type="number" id="wKg" inputmode="decimal" step="0.1" placeholder="体重 kg" value="${todayRec&&todayRec.kg!=null?todayRec.kg:''}" style="flex:1;min-width:0"><input type="number" id="wFat" inputmode="decimal" step="0.1" placeholder="体脂肪%" value="${todayRec&&todayRec.fat!=null?todayRec.fat:''}" style="flex:1;min-width:0"><button class="btn btn-primary btn-sm" style="padding:11px 16px;white-space:nowrap;flex:none" data-a="saveWeight">記録</button></div>
+    <button class="link" style="margin-top:10px" data-a="hcPaste">⌚ ヘルスケア / eufyのデータを貼り付けて取り込む</button></div>`;
   if(last){
     const diff=last.kg-goal;
     const prev7=avgBetween(ws, addDays(last.date,-7), addDays(last.date,-1));
@@ -651,6 +652,68 @@ function openSetEdit(id){
     return h;
   });
 }
+// ===== ヘルスケア（eufy Life → Appleヘルスケア → ショートカット）からの取り込み =====
+// 受け付ける形式: "2026-09-20,77.5,17.1" を「;」か改行で区切って複数。CSV（eufy Lifeの書き出し）も可
+function parseBodyRows(text){
+  const rows=[];
+  const lines=String(text||'').replace(/\r/g,'').split(/[;\n]+/).map(l=>l.trim()).filter(Boolean);
+  let dateCol=0, kgCol=1, fatCol=2, header=false;
+  const head=lines[0]&&lines[0].toLowerCase();
+  if(head && /[a-z]/.test(head) && !/^\d{4}/.test(head)){
+    const cols=head.split(/[,\t]/).map(c=>c.trim());
+    const find=(...keys)=>cols.findIndex(c=>keys.some(k=>c.includes(k)));
+    const d=find('date','時','日'), w=find('weight','体重'), f=find('fat','体脂肪');
+    if(d>=0&&w>=0){ dateCol=d; kgCol=w; fatCol=f; header=true; }
+  }
+  for(const line of (header?lines.slice(1):lines)){
+    const cols=line.split(/[,\t]/).map(c=>c.trim());
+    const dm=(cols[dateCol]||'').match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+    if(!dm) continue;
+    const date=`${dm[1]}-${pad(+dm[2])}-${pad(+dm[3])}`;
+    const val=i=>{ if(i<0||i>=cols.length) return null; const t=cols[i].replace(/[^\d.]/g,''); return t?num(t,null):null; };
+    let kg=val(kgCol), fat=val(fatCol);
+    if(fat!=null && fat>0 && fat<1) fat=fat*100;   // ヘルスケアは 0.171 のような割合で返すことがある
+    if(kg!=null && !(kg>20&&kg<300)) kg=null;
+    if(fat!=null && !(fat>2&&fat<60)) fat=null;
+    if(kg==null && fat==null) continue;
+    rows.push({date, kg:kg!=null?r1(kg):null, fat:fat!=null?r1(fat):null});
+  }
+  return rows;
+}
+// 体重計の値を正とするので、同じ日の記録は上書きする
+function applyBodyRows(rows){
+  let add=0, upd=0, same=0;
+  for(const r of rows){
+    const ex=db.weights.find(w=>w.date===r.date);
+    if(!ex){ db.weights.push({date:r.date, kg:r.kg, fat:r.fat}); add++; continue; }
+    const before=[ex.kg,ex.fat].join();
+    if(r.kg!=null) ex.kg=r.kg;
+    if(r.fat!=null) ex.fat=r.fat;
+    if([ex.kg,ex.fat].join()===before) same++; else upd++;
+  }
+  if(add||upd) save();
+  return {add, upd, same};
+}
+function importFromHash(){
+  const m=location.hash.match(/^#hc=([\s\S]+)$/);
+  if(!m) return;
+  let raw=m[1];
+  try{ raw=decodeURIComponent(raw); }catch(e){}
+  history.replaceState(null,'',location.pathname+location.search);
+  const rows=parseBodyRows(raw);
+  if(!rows.length){ state.tab='weight'; toast('ヘルスケアの値を読み取れませんでした'); return; }
+  const {add,upd,same}=applyBodyRows(rows);
+  state.tab='weight';
+  const last=rows[rows.length-1];
+  toast(add||upd ? `ヘルスケアから取り込みました（${last.kg!=null?last.kg+'kg':''}${last.fat!=null?' / '+last.fat+'%':''}）` : `すでに記録済みです（${same}件）`);
+}
+function openHealthPaste(){
+  sheet={kind:'hc'};
+  openSheet('ヘルスケア・eufyから取り込む', ()=>`<div class="sub">ショートカットでコピーした値や、eufy Lifeの「Export All Data」で届いたCSVを貼り付けてください。<br>1行に「日付,体重,体脂肪率」。同じ日の記録は上書きします。</div>
+    <textarea id="hcText" style="margin-top:10px;min-height:140px" placeholder="2026-09-20,77.5,17.1&#10;2026-09-19,77.8,17.2"></textarea>
+    <button class="btn btn-primary" style="margin-top:10px" data-a="doHcImport">取り込む</button>`);
+}
+
 // ===== クリップボード =====
 async function copyText(text){
   if(navigator.clipboard && window.isSecureContext){ try{ await navigator.clipboard.writeText(text); return true; }catch(e){} }
@@ -752,6 +815,8 @@ document.addEventListener('click', async e=>{
     case 'delWeight': if(confirm(`${jpDate(v)} の記録を削除しますか？`)){ db.weights=db.weights.filter(w=>w.date!==v); save(); render(); } break;
     case 'wRange': state.wRange=+v; render(); break;
     case 'wAll': state.wAll=true; render(); break;
+    case 'hcPaste': openHealthPaste(); break;
+    case 'doHcImport': { const rows=parseBodyRows(document.getElementById('hcText').value); if(!rows.length){ toast('日付と数値を読み取れませんでした'); break; } const {add,upd,same}=applyBodyRows(rows); closeSheet(); render(); toast(`追加${add}件 / 更新${upd}件${same?` / 変更なし${same}件`:''}`); break; }
     // 食事タブ
     case 'foodTab': state.foodTab=v; render(); break;
     case 'foodCat': state.foodCat=v; render(); break;
@@ -837,7 +902,9 @@ document.getElementById('sheet').addEventListener('click', e=>{ if(e.target.id==
 // 日付が変わったら Today を今日に戻す
 document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && state.lastDay!==todayStr()){ state.lastDay=todayStr(); state.date=todayStr(); render(); } });
 state.lastDay=todayStr();
+importFromHash();
 render();
+window.addEventListener('hashchange', ()=>{ importFromHash(); render(); });
 </script>
 </body>
 </html>
