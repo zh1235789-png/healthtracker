@@ -683,8 +683,15 @@ function parseBodyRows(text){
       if(cols.length>=expectCols || !cols.every(isNum)) continue;
       date=todayStr(); off=-1;                              // 日付列がない分だけ列をずらす
     }
-    const val=i=>{ const j=i+off; if(j<0||j>=cols.length) return null; const t=cols[j].replace(/[^\d.]/g,''); return t?num(t,null):null; };
-    let kg=val(kgCol), fat=val(fatCol);
+    // 列ごとに許す単位を決める。換算が要る単位(lb/g)や別の列の単位は受け付けない
+    const val=(i,ok)=>{
+      const j=i+off; if(j<0||j>=cols.length) return null;
+      const raw=String(cols[j]).trim().replace(/^["']|["']$/g,'').trim();
+      const m=raw.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+      if(!m || !ok.test(m[2].trim())) return null;
+      return num(m[1],null);
+    };
+    let kg=val(kgCol,/^(kg)?$/i), fat=val(fatCol,/^(%|％)?$/);
     if(fat!=null && fat>0 && fat<1) fat=fat*100;   // ヘルスケアは 0.171 のような割合で返すことがある
     if(kg!=null && !(kg>20&&kg<300)) kg=null;
     if(fat!=null && !(fat>2&&fat<60)) fat=null;

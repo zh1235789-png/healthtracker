@@ -108,3 +108,48 @@ test('[回帰] グラム表記を kg として保存しない', () => {
     assert.equal(r.kg, null, `g が kg として保存された: ${r.kg}`);
   }
 });
+
+// ---- 列ごとの単位検証 ----
+
+test('[回帰] 日付あり行でもポンド表記を kg として保存しない', () => {
+  for (const r of parse('2026-09-20,170lb,17.1%')) {
+    assert.equal(r.kg, null, `lb が kg として保存された: ${r.kg}`);
+  }
+});
+
+test('[回帰] 日付あり行でもグラム表記を kg として保存しない', () => {
+  for (const r of parse('2026-09-20,77500g,17.1%')) {
+    assert.equal(r.kg, null, `g が kg として保存された: ${r.kg}`);
+  }
+});
+
+test('[回帰] %付きの値を体重として保存しない', () => {
+  for (const r of parse('77.5%,17.1')) {
+    assert.equal(r.kg, null, `% 付きの値が kg として保存された: ${r.kg}`);
+  }
+});
+
+test('[回帰] kg付きの値を体脂肪率として保存しない', () => {
+  for (const r of parse('2026-09-20,77.5,17.1kg')) {
+    assert.equal(r.fat, null, `kg 付きの値が fat として保存された: ${r.fat}`);
+  }
+});
+
+test('正しい単位つきは引き続き取り込める', () => {
+  assert.deepEqual(parse('2026-09-20,77.5kg,17.1%'),
+    [{ date: '2026-09-20', kg: 77.5, fat: 17.1 }]);
+});
+
+test('全角%も体脂肪率として読む', () => {
+  assert.equal(parse('2026-09-20,77.5,17.1％')[0].fat, 17.1);
+});
+
+test('単位と数値の間に空白があっても読む', () => {
+  assert.deepEqual(parse('2026-09-20,77.5 kg,17.1 %'),
+    [{ date: '2026-09-20', kg: 77.5, fat: 17.1 }]);
+});
+
+test('引用符つきCSVを引き続き読む', () => {
+  assert.deepEqual(parse('"2026-09-20","77.5","17.1"'),
+    [{ date: '2026-09-20', kg: 77.5, fat: 17.1 }]);
+});
