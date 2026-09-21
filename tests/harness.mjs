@@ -25,6 +25,11 @@ function stub() {
   });
 }
 
+// vm realm の外に値を持ち出すときはこれを通す。
+// realm を跨ぐと Array/Object のプロトタイプが違い、assert.deepEqual が
+// "same structure but are not reference-equal" で落ちるため。
+export const norm = (v) => JSON.parse(JSON.stringify(v));
+
 export function loadApp({ today = null, storage = {} } = {}) {
   const html = readFileSync(join(here, '..', 'index.html'), 'utf8');
   // 将来 <script> が増えても壊れないよう、非貪欲に全ブロックを連結する
@@ -49,6 +54,12 @@ export function loadApp({ today = null, storage = {} } = {}) {
     structuredClone,
     fetch: async () => { throw new Error('fetch はテストでは使えません'); },
     FileReader: stub(),
+    speechSynthesis: stub(),
+    SpeechSynthesisUtterance: stub(),
+    AudioContext: stub(),
+    webkitAudioContext: stub(),
+    requestAnimationFrame: (cb) => setTimeout(cb, 0),
+    matchMedia: () => stub(),
     Date: today
       ? class extends Date {
           constructor(...a) { if (a.length === 0) super(today); else super(...a); }
@@ -67,5 +78,8 @@ export function loadApp({ today = null, storage = {} } = {}) {
     ctx.__initError = e;
   }
   ctx.__store = store;
+  // トップレベルの let/const はグローバルオブジェクトに載らないので、
+  // 同じコンテキストで式を評価して取り出せるようにする（例: app.$('S')）
+  ctx.$ = (expr) => vm.runInContext(expr, ctx, { filename: 'eval' });
   return ctx;
 }
