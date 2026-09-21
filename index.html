@@ -665,12 +665,23 @@ function parseBodyRows(text){
     const d=find('date','時','日'), w=find('weight','体重'), f=find('fat','体脂肪');
     if(d>=0&&w>=0){ dateCol=d; kgCol=w; fatCol=f; header=true; }
   }
+  const expectCols=Math.max(dateCol,kgCol,fatCol)+1;       // 想定の列数
+  const isNum=s=>s===''||/^-?\d+(\.\d+)?$/.test(s);
+  const realDate=(y,m,d)=>{ const t=new Date(Date.UTC(y,m-1,d)); return t.getUTCFullYear()===y&&t.getUTCMonth()===m-1&&t.getUTCDate()===d; };
   for(const line of (header?lines.slice(1):lines)){
     const cols=line.split(/[,\t]/).map(c=>c.trim());
     const dm=(cols[dateCol]||'').match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
-    // 日付がなければ今日の記録として扱う（ショートカットを短くするため）
-    const date = dm ? `${dm[1]}-${pad(+dm[2])}-${pad(+dm[3])}` : todayStr();
-    const off = dm ? 0 : -1;   // 日付列がない分だけ列をずらす
+    let date, off;
+    if(dm){
+      if(!realDate(+dm[1],+dm[2],+dm[3])) continue;         // 2026-13-45 のような存在しない日付は捨てる
+      date=`${dm[1]}-${pad(+dm[2])}-${pad(+dm[3])}`; off=0;
+    }else{
+      // 日付がなければ今日の記録として扱う（ショートカットを短くするため）。
+      // ただし「日付列はあるが中身が日付でない」行は、列をずらすとゴミを体重として
+      // 拾ってしまうので捨てる（例: "Sep 25,77.5,17.1" → 体重25kg として今日を上書き）
+      if(cols.length>=expectCols || !cols.every(isNum)) continue;
+      date=todayStr(); off=-1;                              // 日付列がない分だけ列をずらす
+    }
     const val=i=>{ const j=i+off; if(j<0||j>=cols.length) return null; const t=cols[j].replace(/[^\d.]/g,''); return t?num(t,null):null; };
     let kg=val(kgCol), fat=val(fatCol);
     if(fat!=null && fat>0 && fat<1) fat=fat*100;   // ヘルスケアは 0.171 のような割合で返すことがある
