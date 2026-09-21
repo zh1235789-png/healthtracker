@@ -667,7 +667,7 @@ function parseBodyRows(text){
   }
   const expectCols=Math.max(dateCol,kgCol,fatCol)+1;       // 想定の列数
   // 単位は「値をそのまま解釈してよいもの」だけ許す。lb/g は換算が要るので受け付けない
-  const isNum=s=>s===''||/^\d+(\.\d+)?(kg|%|％)?$/i.test(s);   // 77.5 / 77.5kg / 17.1% は可、"Sep 25" "170lb" は不可
+  const isNum=s=>s===''||/^(\d+(\.\d*)?|\.\d+)\s*(kg|%|％)?$/i.test(s);   // 77.5 / 77.5 kg / .171 は可、"Sep 25" "170lb" は不可
   const realDate=(y,m,d)=>{ const t=new Date(Date.UTC(y,m-1,d)); return t.getUTCFullYear()===y&&t.getUTCMonth()===m-1&&t.getUTCDate()===d; };
   for(const line of (header?lines.slice(1):lines)){
     const cols=line.split(/[,\t]/).map(c=>c.trim());
@@ -687,7 +687,7 @@ function parseBodyRows(text){
     const val=(i,ok)=>{
       const j=i+off; if(j<0||j>=cols.length) return null;
       const raw=String(cols[j]).trim().replace(/^["']|["']$/g,'').trim();
-      const m=raw.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+      const m=raw.match(/^(\d+(?:\.\d*)?|\.\d+)\s*(.*)$/);   // .171 や 77. も数値として扱う
       if(!m || !ok.test(m[2].trim())) return null;
       return num(m[1],null);
     };
