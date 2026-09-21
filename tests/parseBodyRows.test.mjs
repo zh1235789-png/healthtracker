@@ -79,3 +79,32 @@ test('月末日は有効な日付として通す(2026-02-28)', () => {
 test('うるう年でない2月29日は捨てる(2026-02-29)', () => {
   assert.deepEqual(parse('2026-02-29,77.5,17.1'), []);
 });
+
+// ---- 単位つきの値（Codex が push 時に指摘した回帰） ----
+
+test('[回帰] 日付なしで単位つきの値も取り込める', () => {
+  assert.deepEqual(parse('77.5kg,17.1%'),
+    [{ date: '2026-09-21', kg: 77.5, fat: 17.1 }]);
+});
+
+test('[回帰] 日付なしで単位つきの体重だけでも取り込める', () => {
+  assert.deepEqual(parse('77.5kg'),
+    [{ date: '2026-09-21', kg: 77.5, fat: null }]);
+});
+
+test('数字で始まっても日付らしい文字列は体重として拾わない', () => {
+  assert.deepEqual(parse('date,weight,fat\n25 Sep,77.5,17.1'), []);
+});
+
+// ---- 変換できない単位（pre-push で Codex が High 指摘） ----
+
+test('[回帰] ポンド表記を kg として保存しない', () => {
+  const rows = parse('170lb,17.1%');
+  assert.deepEqual(rows, [], `lb が kg として保存された: ${JSON.stringify(rows)}`);
+});
+
+test('[回帰] グラム表記を kg として保存しない', () => {
+  for (const r of parse('77500g,17.1%')) {
+    assert.equal(r.kg, null, `g が kg として保存された: ${r.kg}`);
+  }
+});

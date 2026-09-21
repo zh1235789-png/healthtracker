@@ -666,7 +666,8 @@ function parseBodyRows(text){
     if(d>=0&&w>=0){ dateCol=d; kgCol=w; fatCol=f; header=true; }
   }
   const expectCols=Math.max(dateCol,kgCol,fatCol)+1;       // 想定の列数
-  const isNum=s=>s===''||/^-?\d+(\.\d+)?$/.test(s);
+  // 単位は「値をそのまま解釈してよいもの」だけ許す。lb/g は換算が要るので受け付けない
+  const isNum=s=>s===''||/^\d+(\.\d+)?(kg|%|％)?$/i.test(s);   // 77.5 / 77.5kg / 17.1% は可、"Sep 25" "170lb" は不可
   const realDate=(y,m,d)=>{ const t=new Date(Date.UTC(y,m-1,d)); return t.getUTCFullYear()===y&&t.getUTCMonth()===m-1&&t.getUTCDate()===d; };
   for(const line of (header?lines.slice(1):lines)){
     const cols=line.split(/[,\t]/).map(c=>c.trim());

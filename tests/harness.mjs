@@ -27,8 +27,10 @@ function stub() {
 
 export function loadApp({ today = null, storage = {} } = {}) {
   const html = readFileSync(join(here, '..', 'index.html'), 'utf8');
-  const m = html.match(/<script>([\s\S]*)<\/script>/);
-  if (!m) throw new Error('index.html に <script> が見つかりません');
+  // 将来 <script> が増えても壊れないよう、非貪欲に全ブロックを連結する
+  const blocks = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  if (blocks.length === 0) throw new Error('index.html に <script> が見つかりません');
+  const source = blocks.join('\n;\n');
 
   const store = { ...storage };
   const ctx = {
@@ -60,7 +62,7 @@ export function loadApp({ today = null, storage = {} } = {}) {
 
   // 末尾の初期化（render等）が落ちても、関数定義は既に済んでいるので握り潰す
   try {
-    vm.runInContext(m[1], ctx, { filename: 'index.html<script>' });
+    vm.runInContext(source, ctx, { filename: 'index.html<script>' });
   } catch (e) {
     ctx.__initError = e;
   }
